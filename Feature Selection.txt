@@ -1,0 +1,23 @@
+/*  Test problem FeSeGD
+    # of real variables = 3
+    # of bin variables = 0
+    # of objectives = 2
+    # of constraints = 0
+    */
+
+#ifdef FeSeGD
+void test_problem (double *xreal, double *xbin, int **gene, double *obj, double *constr)
+{
+    double f1, f2,tp,fp,fn;
+    int i;
+	tp=xreal[0];
+	fp=xreal[1];
+	fn=xreal[2];
+    f1 = tp/(tp+fp);
+	f2 = tp/(tp+fn);
+   
+    obj[0] = f1;
+    obj[1] = f2;
+    return;
+}
+#endif

@@ -1,0 +1,71 @@
+@extraction
+has_GD_label(
+    @key
+    @references(relation="has_GD", column="gen_id", alias="has_GD")
+    gen_id text,
+    @key
+    @references(relation="has_GD", column="dis_id", alias="has_GD")
+    dis_id text,
+    @navigable
+    label int,
+    @navigable
+    rule_id text
+).
+
+# make sure all pairs in has_nationality_candidate are considered as unsupervised examples
+has_GD_label(gen,dis, 0, NULL) :- has_relation_candidate(gen,dis, , , , , "has_GD", _).
+
+# supervision by heuristic rules in a UDF
+function supervise over (
+        gen_id text, gen_begin int, gen_end int,
+        dis_id text, dis_begin int, dis_end int,
+        doc_id         text,
+        sentence_index text,
+        sentence_text  text,
+        tokens         text,
+        lemmas         text,
+        pos_tags       text,
+        ner_tags       text
+    ) returns rows like has_GD_label
+    implementation "udf/supervise_has_GD.py" handles tsv lines.
+has_GD_label += supervise(
+    gen_id, gen_begin, gen_end,
+    dis_id, dis_begin, dis_end,
+    doc_id, sentence_index, sentence_text,
+    tokens, lemmas, pos_tags, ner_tags
+) :- has_relation_candidate(gen_id, dis_id, , , , , "has_GD", _),
+     entity_mention(, gen_begin, gen_end, , gen_id, _),
+     entity_mention(sentence_index, dis_begin, dis_end, , dis_id, ),
+     sentences(
+        doc_id, sentence_text,
+        tokens, lemmas, pos_tags, , ner_tags, , sentence_index ).
+
+
+# resolve multiple labels by majority vote (summing the labels in {-1,0,1})
+has_GD_label_resolved(gen_id, dis_id, SUM(vote)) :- has_GD_label(gen_id, dis_id, vote, rule_id).
+
+# assign the resolved labels for the has_GD relation
+has_GD(gen_id, dis_id) = if l > 0 then TRUE
+                      else if l < 0 then FALSE
+                      else NULL end :- has_GD_label_resolved(gen_id, dis_id, l).
+
+## Inference Rules ############################################################
+
+# Features
+@weight(f)
+has_GD(gen_id, dis_id) :-
+    has_relation_candidate(gen_id, dis_id, , , , , "has_GD", _),
+    has_GD_feature(gen_id, dis_id, f).
+
+# Inference rule: Symmetry
+@weight(3.0)
+has_GD(gen_id, dis_id) => has_GD(dis_id, gen_id) :-
+    has_relation_candidate(gen_id, dis_id, , , , , "has_GD", _).
+
+# Inference rule: Only one nationality
+@weight(-1.0)
+has_GD(gen_id, dis_id) => has_GD(gen_id, loc2_id) :-
+    has_relation_candidate(gen_id, dis_id, , , , , "has_GD", _),
+    has_relation_candidate(gen_id, loc2_id, , , , , "has_GD", _).
+##########################
+  
